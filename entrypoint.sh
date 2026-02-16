@@ -3,13 +3,16 @@ set -e
 
 INIT_FLAG="/data/db/.user_initialized"
 
-mongod --bind_ip_all --fork --logpath /var/log/mongodb/mongod.log
-
-until mongosh --quiet --eval "db.adminCommand('ping')" > /dev/null 2>&1; do
-  sleep 1
-done
-
 if [ ! -f "$INIT_FLAG" ]; then
+  echo "First startup detected, initializing users..."
+
+  mongod --bind_ip 127.0.0.1 --noauth &
+  MONGOD_PID=$!
+
+  until mongosh --quiet --eval "db.adminCommand('ping')" > /dev/null 2>&1; do
+    sleep 1
+  done
+
   if [ -n "$MONGO_INITDB_ROOT_USERNAME" ] && [ -n "$MONGO_INITDB_ROOT_PASSWORD" ]; then
     mongosh admin --quiet --eval "
       db.createUser({
@@ -37,12 +40,13 @@ if [ ! -f "$INIT_FLAG" ]; then
   fi
 
   touch "$INIT_FLAG"
-  echo "Initialization complete."
+  echo "Initialization complete. Stopping temporary mongod..."
+
+  kill "$MONGOD_PID"
+  wait "$MONGOD_PID" 2>/dev/null || true
 else
   echo "Already initialized, skipping user creation."
 fi
 
-mongosh admin --quiet --eval "db.shutdownServer()" > /dev/null 2>&1 || true
-sleep 2
-
+echo "Starting MongoDB with --auth..."
 exec mongod --bind_ip_all --auth
