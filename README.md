@@ -14,7 +14,7 @@ The [`Dockerfile`](./Dockerfile) on the `master` branch uses the official [`mong
 | `MONGO_NON_ROOT_PASSWORD` | Application-level database password |
 | `MONGO_NON_ROOT_DATABASE` | Database name for the non-root user |
 
-On first startup, the image automatically creates the root user from `MONGO_INITDB_ROOT_USERNAME`/`MONGO_INITDB_ROOT_PASSWORD`. The `init-user.sh` script in `/docker-entrypoint-initdb.d/` then creates the non-root application user with `readWrite` access to the specified database.
+On first startup, `entrypoint.sh` starts mongod without auth, creates the root and app users, then restarts mongod with `--auth`. On subsequent startups, user creation is skipped. Connect without TLS: `mongodb://USER:PASS@HOST:27017/DB`.
 
 ## Deployment
 
