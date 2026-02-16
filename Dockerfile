@@ -1,4 +1,8 @@
-FROM mongo:8.0
+FROM mongodb/mongodb-community-server:8.0-ubuntu2204
 
-COPY init-user.sh /docker-entrypoint-initdb.d/init-user.sh
-RUN chmod +x /docker-entrypoint-initdb.d/init-user.sh
+RUN mkdir -p /var/log/mongodb && chown mongodb:mongodb /var/log/mongodb
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
