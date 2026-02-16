@@ -2,7 +2,19 @@
 
 This repo can be used to deploy [MongoDB] on Render.
 
-The [`Dockerfile`](./Dockerfile) on the `master` branch points to latest stable MongoDB version (**4.2**). We also provide dockerfiles for specific MongoDB release lines in this repository in appropriate branches.
+The [`Dockerfile`](./Dockerfile) on the `master` branch points to latest stable MongoDB version (**8.0**). We also provide dockerfiles for specific MongoDB release lines in this repository in appropriate branches.
+
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `MONGO_INITDB_ROOT_USERNAME` | Root (admin) username |
+| `MONGO_INITDB_ROOT_PASSWORD` | Root (admin) password (auto-generated on Render) |
+| `MONGO_NON_ROOT_USERNAME` | Application-level database user |
+| `MONGO_NON_ROOT_PASSWORD` | Application-level database password (auto-generated on Render) |
+| `MONGO_NON_ROOT_DATABASE` | Database name for the non-root user |
+
+On first startup, MongoDB will create the root user and then run `init-user.sh` to create the non-root application user with `readWrite` access to the specified database.
 
 ## Deployment
 

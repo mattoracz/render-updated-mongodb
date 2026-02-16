@@ -3,6 +3,17 @@ services:
     name: mongodb
     env: docker
     autoDeploy: false
+    envVars:
+      - key: MONGO_INITDB_ROOT_USERNAME
+        sync: false
+      - key: MONGO_INITDB_ROOT_PASSWORD
+        sync: false
+      - key: MONGO_NON_ROOT_USERNAME
+        sync: false
+      - key: MONGO_NON_ROOT_PASSWORD
+        sync: false
+      - key: MONGO_NON_ROOT_DATABASE
+        sync: false
     disk:
       name: data
       mountPath: /data/db
