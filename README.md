@@ -2,7 +2,7 @@
 
 This repo can be used to deploy [MongoDB] on Render.
 
-The [`Dockerfile`](./Dockerfile) on the `master` branch uses the official [`mongodb/mongodb-community-server:8.0-ubi8`](https://hub.docker.com/r/mongodb/mongodb-community-server) image.
+The [`Dockerfile`](./Dockerfile) on the `master` branch uses the official [`mongodb/mongodb-community-server:8.0-ubuntu2204`](https://hub.docker.com/r/mongodb/mongodb-community-server) image.
 
 ## Environment Variables
 
@@ -14,7 +14,7 @@ The [`Dockerfile`](./Dockerfile) on the `master` branch uses the official [`mong
 | `MONGO_NON_ROOT_PASSWORD` | Application-level database password |
 | `MONGO_NON_ROOT_DATABASE` | Database name for the non-root user |
 
-On first startup, the custom `entrypoint.sh` creates the root user and then the non-root application user with `readWrite` access to the specified database. On subsequent startups, user creation is skipped and MongoDB starts with `--auth` enabled.
+On first startup, the image automatically creates the root user from `MONGO_INITDB_ROOT_USERNAME`/`MONGO_INITDB_ROOT_PASSWORD`. The `init-user.sh` script in `/docker-entrypoint-initdb.d/` then creates the non-root application user with `readWrite` access to the specified database.
 
 ## Deployment
 
