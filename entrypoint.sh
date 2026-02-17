@@ -3,16 +3,6 @@ set -e
 
 INIT_FLAG="/data/db/.initialized"
 
-# Optional: enable SSH for Render SSH / Studio 3T tunnel
-if [ -n "$RENDER_SSH_PUBLIC_KEY" ]; then
-  mkdir -p /var/run/sshd /root/.ssh
-  echo "$RENDER_SSH_PUBLIC_KEY" > /root/.ssh/authorized_keys
-  chmod 700 /root/.ssh
-  chmod 600 /root/.ssh/authorized_keys
-  /usr/sbin/sshd -E /dev/stderr
-  echo "==> SSHD started on port 22 (RENDER_SSH_PUBLIC_KEY set)."
-fi
-
 # Fix ownership for existing data (e.g. from previous deploy)
 chown -R mongodb:mongodb /data/db 2>/dev/null || true
 

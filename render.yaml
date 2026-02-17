@@ -14,8 +14,6 @@ services:
         sync: false
       - key: MONGO_NON_ROOT_DATABASE
         sync: false
-      - key: RENDER_SSH_PUBLIC_KEY
-        sync: false
     disk:
       name: data
       mountPath: /data/db
