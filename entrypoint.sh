@@ -7,21 +7,23 @@ INIT_FLAG="/data/db/.initialized"
 chown -R mongodb:mongodb /data/db 2>/dev/null || true
 
 wait_for_mongod() {
-  echo "Waiting for mongod to accept connections..."
-  for i in $(seq 1 30); do
-    if gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand('ping')" 2>/dev/null | grep -q ok; then
-      echo "mongod is ready."
+  echo "==> Waiting for mongod to accept connections (timeout 60s)..."
+  local max=60
+  for i in $(seq 1 "$max"); do
+    if gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand('ping')" >/dev/null 2>&1; then
+      echo "==> mongod is ready (after ${i}s)."
       return 0
     fi
-    sleep 1
+    [ "$i" -eq 1 ] && sleep 2 || sleep 1
   done
-  echo "ERROR: mongod did not become ready in 30s"
+  echo "==> ERROR: mongod did not become ready in ${max}s"
   exit 1
 }
 
 if [ ! -f "$INIT_FLAG" ]; then
-  echo "==> First startup, initializing..."
+  echo "==> First startup, initializing (no $INIT_FLAG)..."
 
+  echo "==> Starting temporary mongod (noauth, 127.0.0.1)..."
   gosu mongodb mongod --bind_ip 127.0.0.1 --port 27017 --dbpath /data/db --noauth &
   MONGOD_PID=$!
   wait_for_mongod
@@ -55,8 +57,8 @@ if [ ! -f "$INIT_FLAG" ]; then
   kill "$MONGOD_PID"
   wait "$MONGOD_PID" 2>/dev/null || true
 else
-  echo "==> Already initialized, skipping user creation."
+  echo "==> Already initialized ($INIT_FLAG exists), skipping user creation."
 fi
 
-echo "==> Starting mongod with auth..."
+echo "==> Starting mongod with auth (foreground, bind_ip_all)..."
 exec gosu mongodb mongod --bind_ip_all --port 27017 --dbpath /data/db --auth
