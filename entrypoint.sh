@@ -10,7 +10,7 @@ wait_for_mongod() {
   echo "==> Waiting for mongod to accept connections (timeout 60s)..."
   local max=60
   for i in $(seq 1 "$max"); do
-    if gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand('ping')" >/dev/null 2>&1; then
+    if HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand('ping')" >/dev/null 2>&1; then
       echo "==> mongod is ready (after ${i}s)."
       return 0
     fi
@@ -26,9 +26,15 @@ gosu mongodb mongod --bind_ip 127.0.0.1 --port 27017 --dbpath /data/db --noauth 
 MONGOD_PID=$!
 wait_for_mongod
 
-USER_COUNT=$(gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
+# Use HOME=/data/db so mongosh does not try to mkdir /home/mongodb (EACCES in containers).
+# Take only the last line (the expression result); mongosh can print warnings to stdout.
+USER_COUNT=$(HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
   db.getSiblingDB('admin').getUsers().length
-" 2>/dev/null || echo "0")
+" 2>/dev/null | tail -1)
+# Ensure we have a number (empty or non-numeric => no users)
+case "$USER_COUNT" in
+  ''|*[!0-9]*) USER_COUNT=0 ;;
+esac
 
 NEED_CREATE=0
 if [ "$USER_COUNT" = "0" ] || [ -z "$USER_COUNT" ]; then
@@ -46,7 +52,7 @@ if [ "$NEED_CREATE" = "1" ]; then
   echo "==> Creating users (no users found or first init)..."
 
   if [ -n "$MONGO_INITDB_ROOT_USERNAME" ] && [ -n "$MONGO_INITDB_ROOT_PASSWORD" ]; then
-    gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
+    HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
       use admin
       db.createUser({
         user: '$MONGO_INITDB_ROOT_USERNAME',
@@ -58,7 +64,7 @@ if [ "$NEED_CREATE" = "1" ]; then
   fi
 
   if [ -n "$MONGO_NON_ROOT_USERNAME" ] && [ -n "$MONGO_NON_ROOT_PASSWORD" ] && [ -n "$MONGO_NON_ROOT_DATABASE" ]; then
-    gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
+    HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
       use $MONGO_NON_ROOT_DATABASE
       db.createUser({
         user: '$MONGO_NON_ROOT_USERNAME',
@@ -74,7 +80,7 @@ fi
 
 gosu mongodb touch "$INIT_FLAG"
 echo "==> Shutting down temp mongod (graceful)..."
-gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand({ shutdown: 1 })" >/dev/null 2>&1 || true
+HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand({ shutdown: 1 })" >/dev/null 2>&1 || true
 wait "$MONGOD_PID" 2>/dev/null || true
 echo "==> Temp mongod stopped."
 
