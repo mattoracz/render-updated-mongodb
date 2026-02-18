@@ -20,13 +20,30 @@ wait_for_mongod() {
   exit 1
 }
 
-if [ ! -f "$INIT_FLAG" ]; then
-  echo "==> First startup, initializing (no $INIT_FLAG)..."
+# Always start temp mongod to check/create users (handles: first run, or .initialized without users)
+echo "==> Starting temporary mongod (noauth, 127.0.0.1) to ensure users exist..."
+gosu mongodb mongod --bind_ip 127.0.0.1 --port 27017 --dbpath /data/db --noauth &
+MONGOD_PID=$!
+wait_for_mongod
 
-  echo "==> Starting temporary mongod (noauth, 127.0.0.1)..."
-  gosu mongodb mongod --bind_ip 127.0.0.1 --port 27017 --dbpath /data/db --noauth &
-  MONGOD_PID=$!
-  wait_for_mongod
+USER_COUNT=$(gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
+  db.getSiblingDB('admin').getUsers().length
+" 2>/dev/null || echo "0")
+
+NEED_CREATE=0
+if [ "$USER_COUNT" = "0" ] || [ -z "$USER_COUNT" ]; then
+  if [ -n "$MONGO_INITDB_ROOT_USERNAME" ] && [ -n "$MONGO_INITDB_ROOT_PASSWORD" ]; then
+    NEED_CREATE=1
+  else
+    echo "==> ERROR: No users in admin and MONGO_INITDB_ROOT_USERNAME/MONGO_INITDB_ROOT_PASSWORD are not set."
+    echo "==> Set these env vars in Render Dashboard (Environment) and redeploy."
+    kill "$MONGOD_PID" 2>/dev/null || true
+    exit 1
+  fi
+fi
+
+if [ "$NEED_CREATE" = "1" ]; then
+  echo "==> Creating users (no users found or first init)..."
 
   if [ -n "$MONGO_INITDB_ROOT_USERNAME" ] && [ -n "$MONGO_INITDB_ROOT_PASSWORD" ]; then
     gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
@@ -51,15 +68,15 @@ if [ ! -f "$INIT_FLAG" ]; then
     "
     echo "==> App user '$MONGO_NON_ROOT_USERNAME' created on '$MONGO_NON_ROOT_DATABASE'."
   fi
-
-  gosu mongodb touch "$INIT_FLAG"
-  echo "==> Initialization complete. Shutting down temp mongod (graceful)..."
-  gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand({ shutdown: 1 })" >/dev/null 2>&1 || true
-  wait "$MONGOD_PID" 2>/dev/null || true
-  echo "==> Temp mongod stopped."
 else
-  echo "==> Already initialized ($INIT_FLAG exists), skipping user creation."
+  echo "==> Users already exist (count: $USER_COUNT), skipping user creation."
 fi
+
+gosu mongodb touch "$INIT_FLAG"
+echo "==> Shutting down temp mongod (graceful)..."
+gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand({ shutdown: 1 })" >/dev/null 2>&1 || true
+wait "$MONGOD_PID" 2>/dev/null || true
+echo "==> Temp mongod stopped."
 
 echo "==> Starting mongod with auth (foreground, bind_ip_all)..."
 exec gosu mongodb mongod --bind_ip_all --port 27017 --dbpath /data/db --auth
