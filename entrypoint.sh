@@ -48,32 +48,83 @@ if [ "$USER_COUNT" = "0" ] || [ -z "$USER_COUNT" ]; then
   fi
 fi
 
+# Max lengths (MongoDB / auth limits)
+MAX_USERNAME_LEN=128
+MAX_PASSWORD_LEN=1024
+MAX_DATABASE_LEN=64
+
+check_len() {
+  local name="$1"
+  local value="$2"
+  local max="$3"
+  local n=${#value}
+  if [ "$n" -gt "$max" ]; then
+    echo "==> ERROR: $name is too long (${n} chars, max ${max})."
+    kill "$MONGOD_PID" 2>/dev/null || true
+    exit 1
+  fi
+}
+
+# Escape for single-quoted JS string: \ -> \\, ' -> \'
+escape_js_string() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\'/\\\'}"
+  printf '%s' "$s"
+}
+
 if [ "$NEED_CREATE" = "1" ]; then
   echo "==> Creating users (no users found or first init)..."
 
   if [ -n "$MONGO_INITDB_ROOT_USERNAME" ] && [ -n "$MONGO_INITDB_ROOT_PASSWORD" ]; then
-    HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
-      use admin
-      db.createUser({
-        user: '$MONGO_INITDB_ROOT_USERNAME',
-        pwd: '$MONGO_INITDB_ROOT_PASSWORD',
+    check_len "MONGO_INITDB_ROOT_USERNAME" "$MONGO_INITDB_ROOT_USERNAME" "$MAX_USERNAME_LEN"
+    check_len "MONGO_INITDB_ROOT_PASSWORD" "$MONGO_INITDB_ROOT_PASSWORD" "$MAX_PASSWORD_LEN"
+    ROOT_USER_ESC=$(escape_js_string "$MONGO_INITDB_ROOT_USERNAME")
+    ROOT_PWD_ESC=$(escape_js_string "$MONGO_INITDB_ROOT_PASSWORD")
+    if ! HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
+      db.getSiblingDB('admin').createUser({
+        user: '$ROOT_USER_ESC',
+        pwd: '$ROOT_PWD_ESC',
         roles: ['root']
       })
-    "
+    "; then
+      echo "==> ERROR: Failed to create root user."
+      kill "$MONGOD_PID" 2>/dev/null || true
+      exit 1
+    fi
     echo "==> Root user '$MONGO_INITDB_ROOT_USERNAME' created."
   fi
 
   if [ -n "$MONGO_NON_ROOT_USERNAME" ] && [ -n "$MONGO_NON_ROOT_PASSWORD" ] && [ -n "$MONGO_NON_ROOT_DATABASE" ]; then
-    HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
-      use $MONGO_NON_ROOT_DATABASE
-      db.createUser({
-        user: '$MONGO_NON_ROOT_USERNAME',
-        pwd: '$MONGO_NON_ROOT_PASSWORD',
-        roles: [{ role: 'readWrite', db: '$MONGO_NON_ROOT_DATABASE' }]
+    check_len "MONGO_NON_ROOT_USERNAME" "$MONGO_NON_ROOT_USERNAME" "$MAX_USERNAME_LEN"
+    check_len "MONGO_NON_ROOT_PASSWORD" "$MONGO_NON_ROOT_PASSWORD" "$MAX_PASSWORD_LEN"
+    check_len "MONGO_NON_ROOT_DATABASE" "$MONGO_NON_ROOT_DATABASE" "$MAX_DATABASE_LEN"
+    APP_USER_ESC=$(escape_js_string "$MONGO_NON_ROOT_USERNAME")
+    APP_PWD_ESC=$(escape_js_string "$MONGO_NON_ROOT_PASSWORD")
+    APP_DB_ESC=$(escape_js_string "$MONGO_NON_ROOT_DATABASE")
+    if ! HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
+      db.getSiblingDB('$APP_DB_ESC').createUser({
+        user: '$APP_USER_ESC',
+        pwd: '$APP_PWD_ESC',
+        roles: [{ role: 'readWrite', db: '$APP_DB_ESC' }]
       })
-    "
+    "; then
+      echo "==> ERROR: Failed to create app user on '$MONGO_NON_ROOT_DATABASE'."
+      kill "$MONGOD_PID" 2>/dev/null || true
+      exit 1
+    fi
     echo "==> App user '$MONGO_NON_ROOT_USERNAME' created on '$MONGO_NON_ROOT_DATABASE'."
   fi
+
+  echo "==> Verifying root user can authenticate..."
+  if ! HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc \
+    -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin \
+    --eval "db.runCommand({ ping: 1 })" >/dev/null 2>&1; then
+    echo "==> ERROR: Root user verification failed (login with MONGO_INITDB_ROOT_* failed)."
+    kill "$MONGOD_PID" 2>/dev/null || true
+    exit 1
+  fi
+  echo "==> Root user verified."
 else
   echo "==> Users already exist (count: $USER_COUNT), skipping user creation."
 fi
