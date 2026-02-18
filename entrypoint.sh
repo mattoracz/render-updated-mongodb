@@ -53,9 +53,10 @@ if [ ! -f "$INIT_FLAG" ]; then
   fi
 
   gosu mongodb touch "$INIT_FLAG"
-  echo "==> Initialization complete. Shutting down temp mongod..."
-  kill "$MONGOD_PID"
+  echo "==> Initialization complete. Shutting down temp mongod (graceful)..."
+  gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand({ shutdown: 1 })" >/dev/null 2>&1 || true
   wait "$MONGOD_PID" 2>/dev/null || true
+  echo "==> Temp mongod stopped."
 else
   echo "==> Already initialized ($INIT_FLAG exists), skipping user creation."
 fi
