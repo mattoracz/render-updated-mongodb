@@ -93,14 +93,19 @@ if [ "$NEED_CREATE" = "1" ]; then
         roles: ['root']
       })
     " > "$ROOT_CREATE_OUT" 2>&1; then
-      echo "==> ERROR: Failed to create root user. mongosh output:"
-      cat "$ROOT_CREATE_OUT"
-      rm -f "$ROOT_CREATE_OUT"
-      kill "$MONGOD_PID" 2>/dev/null || true
-      exit 1
+      if grep -q "already exists" "$ROOT_CREATE_OUT"; then
+        echo "==> Root user '$MONGO_INITDB_ROOT_USERNAME' already exists, skipping."
+      else
+        echo "==> ERROR: Failed to create root user. mongosh output:"
+        cat "$ROOT_CREATE_OUT"
+        rm -f "$ROOT_CREATE_OUT"
+        kill "$MONGOD_PID" 2>/dev/null || true
+        exit 1
+      fi
+    else
+      echo "==> Root user '$MONGO_INITDB_ROOT_USERNAME' created."
     fi
     rm -f "$ROOT_CREATE_OUT"
-    echo "==> Root user '$MONGO_INITDB_ROOT_USERNAME' created."
   fi
 
   if [ -n "$MONGO_NON_ROOT_USERNAME" ] && [ -n "$MONGO_NON_ROOT_PASSWORD" ] && [ -n "$MONGO_NON_ROOT_DATABASE" ]; then
@@ -118,14 +123,19 @@ if [ "$NEED_CREATE" = "1" ]; then
         roles: [{ role: 'readWrite', db: '$APP_DB_ESC' }]
       })
     " > "$APP_CREATE_OUT" 2>&1; then
-      echo "==> ERROR: Failed to create app user on '$MONGO_NON_ROOT_DATABASE'. mongosh output:"
-      cat "$APP_CREATE_OUT"
-      rm -f "$APP_CREATE_OUT"
-      kill "$MONGOD_PID" 2>/dev/null || true
-      exit 1
+      if grep -q "already exists" "$APP_CREATE_OUT"; then
+        echo "==> App user '$MONGO_NON_ROOT_USERNAME' already exists on '$MONGO_NON_ROOT_DATABASE', skipping."
+      else
+        echo "==> ERROR: Failed to create app user on '$MONGO_NON_ROOT_DATABASE'. mongosh output:"
+        cat "$APP_CREATE_OUT"
+        rm -f "$APP_CREATE_OUT"
+        kill "$MONGOD_PID" 2>/dev/null || true
+        exit 1
+      fi
+    else
+      echo "==> App user '$MONGO_NON_ROOT_USERNAME' created on '$MONGO_NON_ROOT_DATABASE'."
     fi
     rm -f "$APP_CREATE_OUT"
-    echo "==> App user '$MONGO_NON_ROOT_USERNAME' created on '$MONGO_NON_ROOT_DATABASE'."
   fi
 
   echo "==> Verifying root user can authenticate..."
