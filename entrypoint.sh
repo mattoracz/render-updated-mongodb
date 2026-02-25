@@ -3,6 +3,10 @@ set -e
 
 INIT_FLAG="/data/db/.initialized"
 
+# Render SSH: ensure /root/.ssh exists so platform SSH setup writes there (not under $HOME=/data/db).
+mkdir -p /root/.ssh
+echo "render" > /root/.ssh/authorized_principals
+
 # Fix ownership for existing data (e.g. from previous deploy)
 chown -R mongodb:mongodb /data/db 2>/dev/null || true
 
