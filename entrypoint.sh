@@ -85,17 +85,21 @@ if [ "$NEED_CREATE" = "1" ]; then
     check_len "MONGO_INITDB_ROOT_PASSWORD" "$MONGO_INITDB_ROOT_PASSWORD" "$MAX_PASSWORD_LEN"
     ROOT_USER_ESC=$(escape_js_string "$MONGO_INITDB_ROOT_USERNAME")
     ROOT_PWD_ESC=$(escape_js_string "$MONGO_INITDB_ROOT_PASSWORD")
+    ROOT_CREATE_OUT=$(mktemp)
     if ! HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
       db.getSiblingDB('admin').createUser({
         user: '$ROOT_USER_ESC',
         pwd: '$ROOT_PWD_ESC',
         roles: ['root']
       })
-    "; then
-      echo "==> ERROR: Failed to create root user."
+    " > "$ROOT_CREATE_OUT" 2>&1; then
+      echo "==> ERROR: Failed to create root user. mongosh output:"
+      cat "$ROOT_CREATE_OUT"
+      rm -f "$ROOT_CREATE_OUT"
       kill "$MONGOD_PID" 2>/dev/null || true
       exit 1
     fi
+    rm -f "$ROOT_CREATE_OUT"
     echo "==> Root user '$MONGO_INITDB_ROOT_USERNAME' created."
   fi
 
@@ -106,17 +110,21 @@ if [ "$NEED_CREATE" = "1" ]; then
     APP_USER_ESC=$(escape_js_string "$MONGO_NON_ROOT_USERNAME")
     APP_PWD_ESC=$(escape_js_string "$MONGO_NON_ROOT_PASSWORD")
     APP_DB_ESC=$(escape_js_string "$MONGO_NON_ROOT_DATABASE")
+    APP_CREATE_OUT=$(mktemp)
     if ! HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
       db.getSiblingDB('$APP_DB_ESC').createUser({
         user: '$APP_USER_ESC',
         pwd: '$APP_PWD_ESC',
         roles: [{ role: 'readWrite', db: '$APP_DB_ESC' }]
       })
-    "; then
-      echo "==> ERROR: Failed to create app user on '$MONGO_NON_ROOT_DATABASE'."
+    " > "$APP_CREATE_OUT" 2>&1; then
+      echo "==> ERROR: Failed to create app user on '$MONGO_NON_ROOT_DATABASE'. mongosh output:"
+      cat "$APP_CREATE_OUT"
+      rm -f "$APP_CREATE_OUT"
       kill "$MONGOD_PID" 2>/dev/null || true
       exit 1
     fi
+    rm -f "$APP_CREATE_OUT"
     echo "==> App user '$MONGO_NON_ROOT_USERNAME' created on '$MONGO_NON_ROOT_DATABASE'."
   fi
 
