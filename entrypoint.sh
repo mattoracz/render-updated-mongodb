@@ -14,7 +14,7 @@ wait_for_mongod() {
   echo "==> Waiting for mongod to accept connections (timeout 60s)..."
   local max=60
   for i in $(seq 1 "$max"); do
-    if HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand('ping')" >/dev/null 2>&1; then
+    if gosu mongodb env HOME=/data/db mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand('ping')" >/dev/null 2>&1; then
       echo "==> mongod is ready (after ${i}s)."
       return 0
     fi
@@ -30,9 +30,9 @@ gosu mongodb mongod --bind_ip 127.0.0.1 --port 27017 --dbpath /data/db --noauth 
 MONGOD_PID=$!
 wait_for_mongod
 
-# Use HOME=/data/db so mongosh does not try to mkdir /home/mongodb (EACCES in containers).
+# Use env HOME=/data/db inside gosu so mongosh (run as mongodb) does not try to mkdir /home/mongodb (EACCES).
 # Take only the last line (the expression result); mongosh can print warnings to stdout.
-USER_COUNT=$(HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
+USER_COUNT=$(gosu mongodb env HOME=/data/db mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
   db.getSiblingDB('admin').getUsers().length
 " 2>/dev/null | tail -1)
 # Ensure we have a number (empty or non-numeric => no users)
@@ -86,7 +86,7 @@ if [ "$NEED_CREATE" = "1" ]; then
     ROOT_USER_ESC=$(escape_js_string "$MONGO_INITDB_ROOT_USERNAME")
     ROOT_PWD_ESC=$(escape_js_string "$MONGO_INITDB_ROOT_PASSWORD")
     ROOT_CREATE_OUT=$(mktemp)
-    if ! HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
+    if ! gosu mongodb env HOME=/data/db mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
       db.getSiblingDB('admin').createUser({
         user: '$ROOT_USER_ESC',
         pwd: '$ROOT_PWD_ESC',
@@ -111,7 +111,7 @@ if [ "$NEED_CREATE" = "1" ]; then
     APP_PWD_ESC=$(escape_js_string "$MONGO_NON_ROOT_PASSWORD")
     APP_DB_ESC=$(escape_js_string "$MONGO_NON_ROOT_DATABASE")
     APP_CREATE_OUT=$(mktemp)
-    if ! HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
+    if ! gosu mongodb env HOME=/data/db mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "
       db.getSiblingDB('$APP_DB_ESC').createUser({
         user: '$APP_USER_ESC',
         pwd: '$APP_PWD_ESC',
@@ -129,7 +129,7 @@ if [ "$NEED_CREATE" = "1" ]; then
   fi
 
   echo "==> Verifying root user can authenticate..."
-  if ! HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc \
+  if ! gosu mongodb env HOME=/data/db mongosh --host 127.0.0.1 --port 27017 --quiet --norc \
     -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin \
     --eval "db.runCommand({ ping: 1 })" >/dev/null 2>&1; then
     echo "==> ERROR: Root user verification failed (login with MONGO_INITDB_ROOT_* failed)."
@@ -143,7 +143,7 @@ fi
 
 gosu mongodb touch "$INIT_FLAG"
 echo "==> Shutting down temp mongod (graceful)..."
-HOME=/data/db gosu mongodb mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand({ shutdown: 1 })" >/dev/null 2>&1 || true
+gosu mongodb env HOME=/data/db mongosh --host 127.0.0.1 --port 27017 --quiet --norc --eval "db.adminCommand({ shutdown: 1 })" >/dev/null 2>&1 || true
 wait "$MONGOD_PID" 2>/dev/null || true
 echo "==> Temp mongod stopped."
 
